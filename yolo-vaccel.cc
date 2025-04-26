@@ -225,9 +225,9 @@ int main(int argc, char **argv) {
 		image_tensor = image_tensor.unsqueeze(0);
 		image_tensor = image_tensor.contiguous();
 
-		int64_t dims[] = { 1, 3, 640, 640 };
-		v_image = vaccel_torch_tensor_new(4, dims, VACCEL_TORCH_FLOAT);
-		if (!v_image) {
+		long int dims[] = { 1, 3, 640, 640 };
+		int ret = vaccel_torch_tensor_new(&v_image, 4, dims, VACCEL_TORCH_FLOAT);
+		if (ret) {
 			vaccel_warn("Could not initialize the input tensor");
 			goto model_unreg;
 		}
@@ -275,10 +275,10 @@ int main(int argc, char **argv) {
 	}
 
 out_destroy:
-	if (vaccel_torch_tensor_destroy(v_out))
+	if (vaccel_torch_tensor_delete(v_out))
 		vaccel_warn("Could not destroy out tensor");
 img_destroy:
-	if (vaccel_torch_tensor_destroy(v_image))
+	if (vaccel_torch_tensor_delete(v_image))
 		vaccel_warn("Could not destroy image tensor");
 model_unreg:
 	if (vaccel_resource_unregister(&vmodel, &sess))
