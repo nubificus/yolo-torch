@@ -9,6 +9,9 @@
 using torch::indexing::Slice;
 using torch::indexing::None;
 
+struct vaccel_prof_region torch_jitload_forward_stats =
+		VACCEL_PROF_REGION_INIT("torch_jitload_forward");
+
 float generate_scale(cv::Mat& image, const std::vector<int>& target_size) {
 	int origin_w = image.cols;
 	int origin_h = image.rows;
@@ -246,11 +249,16 @@ int main(int argc, char **argv) {
 			.size = sizeof(opt)
 		};
 
+		vaccel_prof_region_start(&torch_jitload_forward_stats);
+
+
 		if (vaccel_torch_jitload_forward(&sess, &vmodel, &run_options,
 						 &v_image, 1, &v_out, 1)) {
 			vaccel_error("Could not run jitload forward");
 			goto out_destroy;
 		}
+
+		vaccel_prof_region_stop(&torch_jitload_forward_stats);
 	
 		torch::Tensor output = torch::from_blob(v_out->data, {1, 84, 8400},
 							torch::kFloat32);
@@ -291,5 +299,8 @@ sess_release:
 		vaccel_error("Can't release session");
 		return -1;
 	}
+
+	vaccel_prof_region_print(&torch_jitload_forward_stats);
+	vaccel_prof_region_release(&torch_jitload_forward_stats);
 	return 0;
 }
