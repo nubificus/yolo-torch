@@ -1,6 +1,10 @@
-# YOLO Inferce
+# YOLO Inference
 
-The repository contains a YOLOv8n `torchscript`. It can be used to run the examples.
+This repository contains a YOLOv8n TorchScript model and example programs for
+running object detection using:
+
+- native LibTorch (stock)
+- vAccel Torch plugin
 
 ## Build
 ```bash
