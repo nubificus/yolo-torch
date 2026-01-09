@@ -180,8 +180,8 @@ torch::Tensor scale_boxes(const std::vector<int>& img1_shape, torch::Tensor& box
 int main(int argc, char **argv) {
 	struct vaccel_session sess;
 	struct vaccel_resource vmodel;
-	struct vaccel_torch_tensor *v_image;
-	struct vaccel_torch_tensor *v_out;
+	struct vaccel_torch_tensor *v_image = NULL;
+	struct vaccel_torch_tensor *v_out = NULL;
 
 	if (vaccel_session_init(&sess, 0)) {
 		vaccel_error("Can't create session");
@@ -215,6 +215,11 @@ int main(int argc, char **argv) {
 			goto model_release;
 		}
 
+		if (vaccel_torch_model_load(&sess, &vmodel)) {
+			vaccel_error("Could not load torch model");
+			goto model_unreg;
+		}
+
 		cv::Mat image = cv::imread(argv[2]);
 		cv::Mat input_image;
 		letterbox(image, input_image, {640, 640});
@@ -226,8 +231,7 @@ int main(int argc, char **argv) {
 		image_tensor = image_tensor.contiguous();
 
 		int64_t dims[] = { 1, 3, 640, 640 };
-		v_image = vaccel_torch_tensor_new(4, dims, VACCEL_TORCH_FLOAT);
-		if (!v_image) {
+		if (vaccel_torch_tensor_new(&v_image, 4, dims, VACCEL_TORCH_FLOAT)) {
 			vaccel_warn("Could not initialize the input tensor");
 			goto model_unreg;
 		}
@@ -240,18 +244,24 @@ int main(int argc, char **argv) {
 			goto img_destroy;
 		}
 
-		const char *opt = "yolo";
 		struct vaccel_torch_buffer run_options = {
-			.data = (char *)opt,
-			.size = sizeof(opt)
+			.data = (char *)"yolo",
+			.size = sizeof("yolo")
 		};
 
-		if (vaccel_torch_jitload_forward(&sess, &vmodel, &run_options,
-						 &v_image, 1, &v_out, 1)) {
-			vaccel_error("Could not run jitload forward");
-			goto out_destroy;
+		struct vaccel_torch_tensor *inputs[] = { v_image };
+		struct vaccel_torch_tensor *outputs[] = { NULL };
+
+		if (vaccel_torch_model_run(&sess, &vmodel,
+					   &run_options,
+				           inputs, 1,
+					   outputs, 1)) {
+			vaccel_error("Could not run torch model");
+			goto img_destroy;
 		}
-	
+
+		v_out = outputs[0];
+
 		torch::Tensor output = torch::from_blob(v_out->data, {1, 84, 8400},
 							torch::kFloat32);
 		// NMS
@@ -275,10 +285,10 @@ int main(int argc, char **argv) {
 	}
 
 out_destroy:
-	if (vaccel_torch_tensor_destroy(v_out))
+	if (vaccel_torch_tensor_delete(v_out))
 		vaccel_warn("Could not destroy out tensor");
 img_destroy:
-	if (vaccel_torch_tensor_destroy(v_image))
+	if (vaccel_torch_tensor_delete(v_image))
 		vaccel_warn("Could not destroy image tensor");
 model_unreg:
 	if (vaccel_resource_unregister(&vmodel, &sess))
