@@ -244,10 +244,9 @@ int main(int argc, char **argv) {
 			goto img_destroy;
 		}
 
-		const char *opt = "yolo";
 		struct vaccel_torch_buffer run_options = {
-			.data = (char *)opt,
-			.size = sizeof(opt)
+			.data = (char *)"yolo",
+			.size = sizeof("yolo")
 		};
 
 		struct vaccel_torch_tensor *inputs[] = { v_image };
