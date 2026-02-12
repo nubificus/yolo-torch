@@ -139,8 +139,9 @@ torch::Tensor non_max_supperession(torch::Tensor& prediction, float conf_thres =
     prediction.index_put_({"...", Slice({None, 4})}, xywh2xyxy(prediction.index({"...", Slice(None, 4)})));
 
     std::vector<torch::Tensor> output;
+    auto target_device = prediction.device().is_cuda() ? torch::kCUDA : torch::kCPU;
     for (int i = 0; i < bs; i++) {
-        output.push_back(torch::zeros({0, 6 + nm}, prediction.device()));
+        output.push_back(torch::zeros({0, 6 + nm}, target_device));
     }
 
     for (int xi = 0; xi < prediction.size(0); xi++) {
@@ -155,12 +156,23 @@ torch::Tensor non_max_supperession(torch::Tensor& prediction, float conf_thres =
         if (!n) { continue; }
 
         // NMS
-        auto c = x.index({Slice(), Slice{5, 6}}) * 7680;
-        auto boxes = x.index({Slice(), Slice(None, 4)}) + c;
+auto c = x.index({Slice(), Slice{5, 6}}) * 7680;
+    auto boxes = x.index({Slice(), Slice(None, 4)}) + c;
+    if (boxes.device().is_cuda() && c.device().is_cpu()) {
+        c = c.to(boxes.device());
+    } else if (boxes.device().is_cpu() && c.device().is_cuda()) {
+        boxes = boxes.to(c.device());
+    }
         auto scores = x.index({Slice(), 4});
         auto i = nms(boxes, scores, iou_thres);
         i = i.index({Slice(None, max_det)});
-        output[xi] = x.index({i});
+        auto selected_x = x.index({i});
+        if (output[xi].device().is_cuda() && selected_x.device().is_cpu()) {
+            selected_x = selected_x.to(output[xi].device());
+        } else if (output[xi].device().is_cpu() && selected_x.device().is_cuda()) {
+            output[xi] = output[xi].to(selected_x.device());
+        }
+        output[xi] = selected_x;
     }
 
     return torch::stack(output);
@@ -214,7 +226,10 @@ int main(int argc, char **argv) {
         std::vector<torch::jit::IValue> inputs {image_tensor};
 
         // Inference
-        torch::Tensor output = yolo_model.forward(inputs).toTensor().cpu();
+        torch::Tensor output = yolo_model.forward(inputs).toTensor();
+        if (output.device().is_cuda()) {
+            output = output.cpu();
+        }
 
         // NMS
         auto keep = non_max_supperession(output)[0];

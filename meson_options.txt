@@ -1,0 +1,2 @@
+option('libtorch_path', type: 'string', value: '', description: 'Path to LibTorch installation')
+option('build_vaccel', type: 'boolean', value: true, description: 'Build vAccel plugin')
